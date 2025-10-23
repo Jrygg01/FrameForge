@@ -2,6 +2,9 @@
 
 FrameForge is an experimental design assistant that turns voice prompts and sketch inputs into interactive web mockups. This repository is structured as a full-stack playground with a React + Tailwind front-end and a Node.js + Express API backend.
 
+## Code Origin
+This code was generated using "npm create vite@latest". We then moved some files around and added more structure. Finally, we used a bit of AI to help set up the basics of the server file and API calling files.
+
 ## Tech Stack
 - React 18 with Vite and Tailwind CSS for the live mockup workspace
 - Node.js 18+ with Express for API orchestration and future AI integrations
