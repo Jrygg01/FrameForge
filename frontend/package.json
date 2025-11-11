@@ -14,6 +14,7 @@
     "@excalidraw/excalidraw": "^0.18.0",
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
+    "dompurify": "^3.1.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-speech-recognition": "^4.0.1"
