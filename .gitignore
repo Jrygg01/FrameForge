@@ -25,3 +25,6 @@ Thumbs.db
 # Coverage
 coverage/
 .nyc_output/
+
+# Documentation files
+*.md
