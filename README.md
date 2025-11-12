@@ -12,8 +12,6 @@ This code was generated using "npm create vite@latest". We then moved some files
 - Node.js 18+ with Express for API orchestration and future AI integrations
 - OpenAI Whisper + Chat Completions (planned) for voice transcription and design reasoning
 - Excalidraw plugin for handling sketch drawing input
-- react-speech-recognition plugin for processing voice input for sketching
-- MUI Material Icons for consistent icon styling
 
 ## Project Structure
 

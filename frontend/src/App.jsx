@@ -1,10 +1,3 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
-import "@excalidraw/excalidraw/index.css";
-import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
-import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
-import MicNoneOutlinedIcon from "@mui/icons-material/MicNoneOutlined";
-import PauseOutlinedIcon from "@mui/icons-material/PauseOutlined";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
 import DOMPurify from 'dompurify';
@@ -12,13 +5,58 @@ import '@excalidraw/excalidraw/index.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
-const IconButton = ({ label, children, ...props }) => (
+const KeyboardIcon = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    className="h-5 w-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+  >
+    <rect x="3" y="6" width="18" height="12" rx="2" />
+    <path d="M7 10h.01M11 10h.01M15 10h.01M9 14h6" strokeLinecap="round" />
+  </svg>
+);
+
+const MicIcon = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    className="h-5 w-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+  >
+    <path
+      d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3z"
+      strokeLinecap="round"
+    />
+    <path d="M5 11a7 7 0 0 0 14 0" strokeLinecap="round" />
+    <path d="M12 19v3" strokeLinecap="round" />
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    className="h-5 w-5"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+  >
+    <rect x="8" y="6" width="3" height="12" rx="1" />
+    <rect x="13" y="6" width="3" height="12" rx="1" />
+  </svg>
+);
+
+const IconButton = ({ label, children }) => (
   <button
     type="button"
     className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#1f1f1f] text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
     aria-label={label}
     title={label}
-    {...props}
   >
     {children}
   </button>
@@ -26,14 +64,14 @@ const IconButton = ({ label, children, ...props }) => (
 
 const getFeedbackClasses = (variant) => {
   switch (variant) {
-    case "success":
-      return "text-emerald-400";
-    case "error":
-      return "text-rose-400";
-    case "pending":
-      return "text-sky-400";
+    case 'success':
+      return 'text-emerald-400';
+    case 'error':
+      return 'text-rose-400';
+    case 'pending':
+      return 'text-sky-400';
     default:
-      return "text-slate-400";
+      return 'text-slate-400';
   }
 };
 
@@ -53,7 +91,7 @@ const blobToDataUrl = (blob) =>
 
 export default function App() {
   const excalidrawAPIRef = useRef(null);
-  const [sketchTitle] = useState("Homepage concept");
+  const [sketchTitle] = useState('Homepage concept');
   const [feedback, setFeedback] = useState({
     variant: 'idle',
     message: 'Sketch your interface, then click Generate to translate it into HTML.'
@@ -64,13 +102,8 @@ export default function App() {
   const [modelUsed, setModelUsed] = useState('');
   const [backendStatus, setBackendStatus] = useState({
     ready: false,
-    message: "Checking backend connection...",
+    message: 'Checking backend connection...'
   });
-  const [inputMode, setInputMode] = useState("sketch");
-
-  const changeInputMode = (newInputMode) => {
-    setInputMode(newInputMode);
-  };
 
   const uiOptions = useMemo(
     () => ({
@@ -81,9 +114,9 @@ export default function App() {
         loadScene: false,
         saveAsImage: false,
         saveToActiveFile: false,
-        toggleTheme: false,
+        toggleTheme: false
       },
-      dockedToolbar: true,
+      dockedToolbar: true
     }),
     []
   );
@@ -128,8 +161,8 @@ export default function App() {
     const api = excalidrawAPIRef.current;
     if (!api) {
       setFeedback({
-        variant: "error",
-        message: "Canvas is not ready yet. Please wait a moment.",
+        variant: 'error',
+        message: 'Canvas is not ready yet. Please wait a moment.'
       });
       return;
     }
@@ -138,8 +171,8 @@ export default function App() {
 
     if (!elements.length) {
       setFeedback({
-        variant: "error",
-        message: "Add at least one shape or stroke before generating.",
+        variant: 'error',
+        message: 'Add at least one shape or stroke before generating.'
       });
       return;
     }
@@ -171,7 +204,7 @@ export default function App() {
       const response = await fetch(`${API_BASE_URL}/api/generate-ui`, {
         method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           image: imageDataUrl,
@@ -234,134 +267,32 @@ export default function App() {
   return (
     <div className="flex min-h-screen w-screen items-stretch bg-[#0f0f0f] text-white">
       <div className="relative grid h-screen w-full grid-cols-1 bg-black/40 lg:grid-cols-2">
-        {/* Input Pane */}
-        {inputMode === "sketch" ? (
-          <section className="flex flex-col bg-[#181818] lg:pr-12">
-            <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
-              <span className="text-2xl font-semibold tracking-tight">
-                FrameForge
-              </span>
-              <div className="flex items-center gap-3">
-                <IconButton
-                  label="Switch to keyboard prompt"
-                  onClick={() => changeInputMode("type")}
-                >
-                  <KeyboardOutlinedIcon />
-                </IconButton>
-                <IconButton
-                  label="Switch to voice prompt"
-                  onClick={() => changeInputMode("speak")}
-                >
-                  <MicNoneOutlinedIcon />
-                </IconButton>
-              </div>
-            </header>
-
-            <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
-              <div className="flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black">
-                <Excalidraw
-                  excalidrawAPI={(api) => {
-                    excalidrawAPIRef.current = api;
-                  }}
-                  theme="dark"
-                  UIOptions={uiOptions}
-                  className="h-full"
-                  style={{ height: "100%", width: "100%" }}
-                  renderTopRightUI={() => null}
-                />
-              </div>
-
-              <div className="mt-4 space-y-1 text-sm">
-                <p className={getFeedbackClasses(feedback.variant)}>
-                  {feedback.message}
-                </p>
-                <p className="text-xs text-white/50">
-                  {backendStatus.message ?? "Waiting for backend status."}
-                </p>
-                {lastSketch?.updatedAt && (
-                  <p className="text-xs text-white/50">
-                    Last saved {formatTimestamp(lastSketch.updatedAt)}
-                  </p>
-                )}
-              </div>
+        <section className="flex flex-col bg-[#181818] lg:pr-12">
+          <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
+            <span className="text-2xl font-semibold tracking-tight">FrameForge</span>
+            <div className="flex items-center gap-3">
+              <IconButton label="Switch to keyboard prompt">
+                <KeyboardIcon />
+              </IconButton>
+              <IconButton label="Switch to voice prompt">
+                <MicIcon />
+              </IconButton>
             </div>
-          </section>
-        ) : inputMode === "type" ? (
-          <section className="flex flex-col bg-[#181818] lg:pr-12">
-            <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
-              <span className="text-2xl font-semibold tracking-tight">
-                FrameForge
-              </span>
-              <div className="flex items-center gap-3">
-                <IconButton
-                  label="Switch to sketching"
-                  onClick={() => changeInputMode("sketch")}
-                >
-                  <DrawOutlinedIcon />
-                </IconButton>
-                <IconButton
-                  label="Switch to voice prompt"
-                  onClick={() => changeInputMode("speak")}
-                >
-                  <MicNoneOutlinedIcon />
-                </IconButton>
-              </div>
-            </header>
+          </header>
 
-            <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
-              <div className="flex-1 overflow-hidden rounded-2xl border border-white/10">
-                <textarea
-                  className="bg-none w-full h-full p-4 bg-stone-950"
-                  type="text"
-                  placeholder="Type prompt here..."
-                ></textarea>
-              </div>
-
-              <div className="mt-4 space-y-1 text-sm">
-                <p className={getFeedbackClasses(feedback.variant)}>
-                  {feedback.message}
-                </p>
-                <p className="text-xs text-white/50">
-                  {backendStatus.message ?? "Waiting for backend status."}
-                </p>
-                {lastSketch?.updatedAt && (
-                  <p className="text-xs text-white/50">
-                    Last saved {formatTimestamp(lastSketch.updatedAt)}
-                  </p>
-                )}
-              </div>
+          <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
+            <div className="flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black">
+              <Excalidraw
+                excalidrawAPI={(api) => {
+                  excalidrawAPIRef.current = api;
+                }}
+                theme="dark"
+                UIOptions={uiOptions}
+                className="h-full"
+                style={{ height: '100%', width: '100%' }}
+                renderTopRightUI={() => null}
+              />
             </div>
-          </section>
-        ) : inputMode === "speak" ? (
-          <section className="flex flex-col bg-[#181818] lg:pr-12">
-            <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
-              <span className="text-2xl font-semibold tracking-tight">
-                FrameForge
-              </span>
-              <div className="flex items-center gap-3">
-                <IconButton
-                  label="Switch to keyboard prompt"
-                  onClick={() => changeInputMode("type")}
-                >
-                  <KeyboardOutlinedIcon />
-                </IconButton>
-                <IconButton
-                  label="Switch to voice prompt"
-                  onClick={() => changeInputMode("sketch")}
-                >
-                  <DrawOutlinedIcon />
-                </IconButton>
-              </div>
-            </header>
-
-            <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
-              <div className="flex-1 overflow-hidden rounded-2xl border border-white/10">
-                <textarea
-                  className="bg-none w-full h-full p-4 bg-stone-950"
-                  type="text"
-                  placeholder="Waiting for voice prompt..."
-                ></textarea>
-              </div>
 
             <div className="mt-4 space-y-1 text-sm">
               <p className={getFeedbackClasses(feedback.variant)}>{feedback.message}</p>
@@ -369,24 +300,19 @@ export default function App() {
                 {backendStatus.message ?? 'Waiting for backend status.'}
               </p>
             </div>
-          </section>
-        ) : (
-          <></>
-        )}
+          </div>
+        </section>
 
-        {/* Output Pane */}
         <section className="relative flex flex-col bg-[#d9d9d9] text-neutral-900 lg:border-l lg:border-neutral-400 lg:pl-12">
           <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
-            <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">
-              Live Preview
-            </h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Live Preview</h2>
             <button
               type="button"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white text-neutral-700 shadow-sm"
               title="Preview paused"
               disabled
             >
-              <PauseOutlinedIcon />
+              <PauseIcon />
             </button>
           </header>
 
