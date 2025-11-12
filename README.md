@@ -60,15 +60,13 @@ npm run dev
 ```
 
 ### 4. Configure Environment Variables
-Copy `backend/.env.example` to `backend/.env` and update it with your local values. At minimum set `OPENAI_API_KEY`. You can also override `OPENAI_RESPONSES_MODEL` or raise `OPENAI_RESPONSES_MAX_TOKENS` if a model runs out of output tokens.
 
-### 5. Generate HTML Mockups
-With both servers running and the API key configured, sketch on the left canvas and press **Generate**. The frontend captures the drawing, the backend sends it to the OpenAI Responses API (including the sketch image), and the returned HTML/CSS is rendered in the right-hand preview pane.
+Copy `backend/.env.example` to `backend/.env` and update it with your local values (e.g., OpenAI API key, frontend origin).
 
 ## Next Steps
 
 - Implement real voice transcription through Whisper
-- Iterate on the prompting and post-processing used for HTML generation
-- Capture version history for generated previews
+- Translate canvas sketches into structured layout data
+- Connect the front-end mockup renderer to the API responses
 
 FrameForge is currently a skeleton meant to help the team align on architecture. Build upon this foundation by layering the interactive canvas, voice command handling, and AI-driven mockup generation.\*\*\* End Patch

@@ -1,109 +1,78 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
-import DOMPurify from 'dompurify';
-import '@excalidraw/excalidraw/index.css';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
+import "@excalidraw/excalidraw/index.css";
+import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
+import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
+import MicNoneOutlinedIcon from "@mui/icons-material/MicNoneOutlined";
+import PauseOutlinedIcon from "@mui/icons-material/PauseOutlined";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
-const KeyboardIcon = () => (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 24 24"
-    className="h-5 w-5"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-  >
-    <rect x="3" y="6" width="18" height="12" rx="2" />
-    <path d="M7 10h.01M11 10h.01M15 10h.01M9 14h6" strokeLinecap="round" />
-  </svg>
-);
-
-const MicIcon = () => (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 24 24"
-    className="h-5 w-5"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-  >
-    <path
-      d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3z"
-      strokeLinecap="round"
-    />
-    <path d="M5 11a7 7 0 0 0 14 0" strokeLinecap="round" />
-    <path d="M12 19v3" strokeLinecap="round" />
-  </svg>
-);
-
-const PauseIcon = () => (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 24 24"
-    className="h-5 w-5"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-  >
-    <rect x="8" y="6" width="3" height="12" rx="1" />
-    <rect x="13" y="6" width="3" height="12" rx="1" />
-  </svg>
-);
-
-const IconButton = ({ label, children }) => (
+const IconButton = ({ label, children, ...props }) => (
   <button
     type="button"
     className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#1f1f1f] text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
     aria-label={label}
     title={label}
+    {...props}
   >
     {children}
   </button>
 );
 
+const formatTimestamp = (value) => {
+  if (!value) {
+    return null;
+  }
+  const stamp = new Date(value);
+  if (Number.isNaN(stamp.getTime())) {
+    return null;
+  }
+  return stamp.toLocaleString();
+};
+
 const getFeedbackClasses = (variant) => {
   switch (variant) {
-    case 'success':
-      return 'text-emerald-400';
-    case 'error':
-      return 'text-rose-400';
-    case 'pending':
-      return 'text-sky-400';
+    case "success":
+      return "text-emerald-400";
+    case "error":
+      return "text-rose-400";
+    case "pending":
+      return "text-sky-400";
     default:
-      return 'text-slate-400';
+      return "text-slate-400";
   }
 };
 
-const blobToDataUrl = (blob) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Unable to read sketch image data.'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Unable to read sketch image data.'));
-    reader.readAsDataURL(blob);
-  });
+const sanitizeAppState = (appState) => {
+  if (!appState) {
+    return {};
+  }
+  // Drop collaborator metadata and transient props before storing.
+  // eslint-disable-next-line no-unused-vars
+  const { collaborators, ...rest } = appState;
+  return rest;
+};
 
 export default function App() {
   const excalidrawAPIRef = useRef(null);
-  const [sketchTitle] = useState('Homepage concept');
+  const [sketchTitle] = useState("Homepage concept");
   const [feedback, setFeedback] = useState({
-    variant: 'idle',
-    message: 'Sketch your interface, then click Generate to translate it into HTML.'
+    variant: "idle",
+    message: "Sketch first, then send it to the backend with Generate.",
   });
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [previewCount, setPreviewCount] = useState(0);
-  const [previewSrcDoc, setPreviewSrcDoc] = useState('');
-  const [modelUsed, setModelUsed] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSketch, setLastSketch] = useState(null);
+  const [sketchCount, setSketchCount] = useState(0);
   const [backendStatus, setBackendStatus] = useState({
     ready: false,
-    message: 'Checking backend connection...'
+    message: "Checking backend connection...",
   });
+  const [inputMode, setInputMode] = useState("sketch");
+
+  const changeInputMode = (newInputMode) => {
+    setInputMode(newInputMode);
+  };
 
   const uiOptions = useMemo(
     () => ({
@@ -114,9 +83,9 @@ export default function App() {
         loadScene: false,
         saveAsImage: false,
         saveToActiveFile: false,
-        toggleTheme: false
+        toggleTheme: false,
       },
-      dockedToolbar: true
+      dockedToolbar: true,
     }),
     []
   );
@@ -124,33 +93,47 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    const verifyBackend = async () => {
+    const bootstrap = async () => {
       try {
-        const statusRes = await fetch(`${API_BASE_URL}/api/status`);
-        if (!statusRes.ok) {
-          throw new Error('Backend unavailable');
-        }
+        const [statusRes, sketchesRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/status`).catch(() => null),
+          fetch(`${API_BASE_URL}/api/sketches`).catch(() => null),
+        ]);
 
         if (cancelled) {
           return;
         }
 
-        const data = await statusRes.json();
-        setBackendStatus({
-          ready: true,
-          message: `Backend online - ${data.service ?? 'FrameForge API'}`
-        });
+        if (statusRes?.ok) {
+          const data = await statusRes.json();
+          setBackendStatus({
+            ready: true,
+            message: `Backend online - ${data.service ?? "FrameForge API"}`,
+          });
+        } else {
+          throw new Error("Backend unavailable");
+        }
+
+        if (sketchesRes?.ok) {
+          const data = await sketchesRes.json();
+          setSketchCount(
+            Array.isArray(data.sketches) ? data.sketches.length : 0
+          );
+          if (data.sketches?.length) {
+            setLastSketch(data.sketches[0]);
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           setBackendStatus({
             ready: false,
-            message: 'Backend unavailable - start the API to enable generation.'
+            message: "Backend unavailable - start the API to enable saving.",
           });
         }
       }
     };
 
-    verifyBackend();
+    bootstrap();
 
     return () => {
       cancelled = true;
@@ -158,98 +141,76 @@ export default function App() {
   }, []);
 
   const handleGenerate = useCallback(async () => {
-    const api = excalidrawAPIRef.current;
-    if (!api) {
+    if (!excalidrawAPIRef.current) {
       setFeedback({
-        variant: 'error',
-        message: 'Canvas is not ready yet. Please wait a moment.'
+        variant: "error",
+        message: "Canvas is not ready yet. Please wait a moment.",
       });
       return;
     }
 
-    const elements = api.getSceneElements()?.filter((element) => !element.isDeleted) ?? [];
+    const elements = excalidrawAPIRef.current.getSceneElements();
+    const hasDrawableElement = elements.some((element) => !element.isDeleted);
 
-    if (!elements.length) {
+    if (!hasDrawableElement) {
       setFeedback({
-        variant: 'error',
-        message: 'Add at least one shape or stroke before generating.'
+        variant: "error",
+        message: "Add at least one shape or stroke before generating.",
       });
       return;
     }
 
-    setIsGenerating(true);
+    setIsSaving(true);
     setFeedback({
-      variant: 'pending',
-      message: 'Generating HTML preview from your sketch...'
+      variant: "pending",
+      message: "Uploading sketch data to the backend...",
     });
 
     try {
-      const appState = api.getAppState();
-      const files = api.getFiles();
-
-      const sketchBlob = await exportToBlob({
+      const rawAppState = excalidrawAPIRef.current.getAppState();
+      const files = excalidrawAPIRef.current.getFiles();
+      const serialized = serializeAsJSON(
         elements,
-        appState: {
-          ...appState,
-          exportBackground: true,
-          exportWithDarkMode: false,
-          viewBackgroundColor: '#ffffff'
-        },
+        sanitizeAppState(rawAppState),
         files,
-        mimeType: 'image/png'
-      });
+        "database"
+      );
 
-      const imageDataUrl = await blobToDataUrl(sketchBlob);
-
-      const response = await fetch(`${API_BASE_URL}/api/generate-ui`, {
-        method: 'POST',
+      const parsed = JSON.parse(serialized);
+      const response = await fetch(`${API_BASE_URL}/api/sketches`, {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          image: imageDataUrl,
-          prompt: `The sketch is titled "${sketchTitle}". Produce semantic, accessible HTML that reflects the layout.`
-        })
+          title: sketchTitle,
+          scene: {
+            elements: parsed.elements ?? [],
+            appState: parsed.appState ?? {},
+            files: parsed.files ?? {},
+          },
+        }),
       });
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error ?? 'Unable to generate UI.');
+        throw new Error(errorBody.error ?? "Unable to save sketch.");
       }
 
       const payload = await response.json();
-      const sanitizedHtml = DOMPurify.sanitize(payload.html ?? '', {
-        USE_PROFILES: { html: true }
-      });
-      const sanitizedCss = DOMPurify.sanitize(payload.css ?? '', {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: []
-      });
-      const sanitizedJs = DOMPurify.sanitize(payload.js ?? '', {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: []
-      });
-
-      const scriptFragment = sanitizedJs.trim()
-        ? `<script type="module">\n${sanitizedJs}\n</script>`
-        : '';
-
-      const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><style>${sanitizedCss}</style></head><body>${sanitizedHtml}${scriptFragment}</body></html>`;
-
-      setPreviewSrcDoc(doc);
-      setModelUsed(payload.model ?? '');
-      setPreviewCount((count) => count + 1);
+      setLastSketch(payload.sketch);
+      setSketchCount((count) => count + 1);
       setFeedback({
-        variant: 'success',
-        message: 'Preview updated with the generated HTML mockup.'
+        variant: "success",
+        message: "Sketch stored! Preview integration will come later.",
       });
     } catch (error) {
       setFeedback({
-        variant: 'error',
-        message: error?.message ?? 'Something went wrong while generating the preview.'
+        variant: "error",
+        message: error.message || "Something went wrong while saving.",
       });
     } finally {
-      setIsGenerating(false);
+      setIsSaving(false);
     }
   }, [sketchTitle]);
 
@@ -257,92 +218,192 @@ export default function App() {
     <button
       type="button"
       onClick={handleGenerate}
-      disabled={isGenerating || !backendStatus.ready}
+      disabled={isSaving || !backendStatus.ready}
       className="pointer-events-auto z-[9999] flex h-12 items-center justify-center rounded-full bg-[#2563eb] px-8 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow-lg transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-[#3f4b6b]"
     >
-      {isGenerating ? 'Generating...' : 'Generate'}
+      {isSaving ? "Saving..." : "Generate"}
     </button>
   );
 
   return (
     <div className="flex min-h-screen w-screen items-stretch bg-[#0f0f0f] text-white">
       <div className="relative grid h-screen w-full grid-cols-1 bg-black/40 lg:grid-cols-2">
-        <section className="flex flex-col bg-[#181818] lg:pr-12">
-          <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
-            <span className="text-2xl font-semibold tracking-tight">FrameForge</span>
-            <div className="flex items-center gap-3">
-              <IconButton label="Switch to keyboard prompt">
-                <KeyboardIcon />
-              </IconButton>
-              <IconButton label="Switch to voice prompt">
-                <MicIcon />
-              </IconButton>
-            </div>
-          </header>
+        {/* Input Pane */}
+        {inputMode === "sketch" ? (
+          <section className="flex flex-col bg-[#181818] lg:pr-12">
+            <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
+              <span className="text-2xl font-semibold tracking-tight">
+                FrameForge
+              </span>
+              <div className="flex items-center gap-3">
+                <IconButton
+                  label="Switch to keyboard prompt"
+                  onClick={() => changeInputMode("type")}
+                >
+                  <KeyboardOutlinedIcon />
+                </IconButton>
+                <IconButton
+                  label="Switch to voice prompt"
+                  onClick={() => changeInputMode("speak")}
+                >
+                  <MicNoneOutlinedIcon />
+                </IconButton>
+              </div>
+            </header>
 
-          <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
-            <div className="flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black">
-              <Excalidraw
-                excalidrawAPI={(api) => {
-                  excalidrawAPIRef.current = api;
-                }}
-                theme="dark"
-                UIOptions={uiOptions}
-                className="h-full"
-                style={{ height: '100%', width: '100%' }}
-                renderTopRightUI={() => null}
-              />
-            </div>
+            <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
+              <div className="flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <Excalidraw
+                  excalidrawAPI={(api) => {
+                    excalidrawAPIRef.current = api;
+                  }}
+                  theme="dark"
+                  UIOptions={uiOptions}
+                  className="h-full"
+                  style={{ height: "100%", width: "100%" }}
+                  renderTopRightUI={() => null}
+                />
+              </div>
 
-            <div className="mt-4 space-y-1 text-sm">
-              <p className={getFeedbackClasses(feedback.variant)}>{feedback.message}</p>
-              <p className="text-xs text-white/50">
-                {backendStatus.message ?? 'Waiting for backend status.'}
-              </p>
+              <div className="mt-4 space-y-1 text-sm">
+                <p className={getFeedbackClasses(feedback.variant)}>
+                  {feedback.message}
+                </p>
+                <p className="text-xs text-white/50">
+                  {backendStatus.message ?? "Waiting for backend status."}
+                </p>
+                {lastSketch?.updatedAt && (
+                  <p className="text-xs text-white/50">
+                    Last saved {formatTimestamp(lastSketch.updatedAt)}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : inputMode === "type" ? (
+          <section className="flex flex-col bg-[#181818] lg:pr-12">
+            <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
+              <span className="text-2xl font-semibold tracking-tight">
+                FrameForge
+              </span>
+              <div className="flex items-center gap-3">
+                <IconButton
+                  label="Switch to sketching"
+                  onClick={() => changeInputMode("sketch")}
+                >
+                  <DrawOutlinedIcon />
+                </IconButton>
+                <IconButton
+                  label="Switch to voice prompt"
+                  onClick={() => changeInputMode("speak")}
+                >
+                  <MicNoneOutlinedIcon />
+                </IconButton>
+              </div>
+            </header>
 
+            <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
+              <div className="flex-1 overflow-hidden rounded-2xl border border-white/10">
+                <textarea
+                  className="bg-none w-full h-full p-4 bg-stone-950"
+                  type="text"
+                  placeholder="Type prompt here..."
+                ></textarea>
+              </div>
+
+              <div className="mt-4 space-y-1 text-sm">
+                <p className={getFeedbackClasses(feedback.variant)}>
+                  {feedback.message}
+                </p>
+                <p className="text-xs text-white/50">
+                  {backendStatus.message ?? "Waiting for backend status."}
+                </p>
+                {lastSketch?.updatedAt && (
+                  <p className="text-xs text-white/50">
+                    Last saved {formatTimestamp(lastSketch.updatedAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : inputMode === "speak" ? (
+          <section className="flex flex-col bg-[#181818] lg:pr-12">
+            <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
+              <span className="text-2xl font-semibold tracking-tight">
+                FrameForge
+              </span>
+              <div className="flex items-center gap-3">
+                <IconButton
+                  label="Switch to keyboard prompt"
+                  onClick={() => changeInputMode("type")}
+                >
+                  <KeyboardOutlinedIcon />
+                </IconButton>
+                <IconButton
+                  label="Switch to voice prompt"
+                  onClick={() => changeInputMode("sketch")}
+                >
+                  <DrawOutlinedIcon />
+                </IconButton>
+              </div>
+            </header>
+
+            <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
+              <div className="flex-1 overflow-hidden rounded-2xl border border-white/10">
+                <textarea
+                  className="bg-none w-full h-full p-4 bg-stone-950"
+                  type="text"
+                  placeholder="Waiting for voice prompt..."
+                ></textarea>
+              </div>
+
+              <div className="mt-4 space-y-1 text-sm">
+                <p className={getFeedbackClasses(feedback.variant)}>
+                  {feedback.message}
+                </p>
+                <p className="text-xs text-white/50">
+                  {backendStatus.message ?? "Waiting for backend status."}
+                </p>
+                {lastSketch?.updatedAt && (
+                  <p className="text-xs text-white/50">
+                    Last saved {formatTimestamp(lastSketch.updatedAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : (
+          <></>
+        )}
+
+        {/* Output Pane */}
         <section className="relative flex flex-col bg-[#d9d9d9] text-neutral-900 lg:border-l lg:border-neutral-400 lg:pl-12">
           <header className="flex items-center justify-between px-6 py-6 lg:px-8 lg:py-8">
-            <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">Live Preview</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">
+              Live Preview
+            </h2>
             <button
               type="button"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-400 bg-white text-neutral-700 shadow-sm"
               title="Preview paused"
               disabled
             >
-              <PauseIcon />
+              <PauseOutlinedIcon />
             </button>
           </header>
 
           <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
-            <div className="flex flex-1 overflow-hidden rounded-2xl bg-white shadow-inner">
-              {previewSrcDoc ? (
-                <iframe
-                  title="Generated UI preview"
-                  className="h-full w-full border-0"
-                  srcDoc={previewSrcDoc}
-                  sandbox="allow-scripts allow-forms allow-pointer-lock allow-popups allow-same-origin"
-                />
-              ) : (
-                <div className="flex flex-1 items-center justify-center text-center text-neutral-500">
-                  <div className="mx-auto max-w-sm space-y-2">
-                    <p className="text-base font-semibold text-neutral-700">No preview yet</p>
-                    <p className="text-sm">
-                      Sketch a layout on the canvas and press Generate to turn it into HTML.
-                    </p>
-                  </div>
-                </div>
-              )}
+            <div className="flex flex-1 items-center justify-center rounded-2xl bg-white shadow-inner">
+              <div className="flex items-center gap-3">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400 delay-150" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400 delay-300" />
+              </div>
             </div>
 
             <p className="mt-4 text-sm text-neutral-600">
-              {backendStatus.ready
-                ? previewCount
-                  ? `Generated previews: ${previewCount}${modelUsed ? ` - Model: ${modelUsed}` : ''}`
-                  : 'Ready to generate your first preview.'
-                : 'Backend offline. Start the API to enable preview generation.'}
+              Stored sketches: {sketchCount}. Preview rendering is intentionally
+              paused.
             </p>
           </div>
         </section>
