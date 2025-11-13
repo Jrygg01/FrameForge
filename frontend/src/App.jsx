@@ -5,12 +5,8 @@ import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import MicNoneOutlinedIcon from "@mui/icons-material/MicNoneOutlined";
 import PauseOutlinedIcon from "@mui/icons-material/PauseOutlined";
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
-import DOMPurify from 'dompurify';
-import '@excalidraw/excalidraw/index.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 const IconButton = ({ label, children, ...props }) => (
   <button
@@ -23,6 +19,17 @@ const IconButton = ({ label, children, ...props }) => (
     {children}
   </button>
 );
+
+const formatTimestamp = (value) => {
+  if (!value) {
+    return null;
+  }
+  const stamp = new Date(value);
+  if (Number.isNaN(stamp.getTime())) {
+    return null;
+  }
+  return stamp.toLocaleString();
+};
 
 const getFeedbackClasses = (variant) => {
   switch (variant) {
@@ -37,31 +44,26 @@ const getFeedbackClasses = (variant) => {
   }
 };
 
-const blobToDataUrl = (blob) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Unable to read sketch image data.'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Unable to read sketch image data.'));
-    reader.readAsDataURL(blob);
-  });
+const sanitizeAppState = (appState) => {
+  if (!appState) {
+    return {};
+  }
+  // Drop collaborator metadata and transient props before storing.
+  // eslint-disable-next-line no-unused-vars
+  const { collaborators, ...rest } = appState;
+  return rest;
+};
 
 export default function App() {
   const excalidrawAPIRef = useRef(null);
   const [sketchTitle] = useState("Homepage concept");
   const [feedback, setFeedback] = useState({
-    variant: 'idle',
-    message: 'Sketch your interface, then click Generate to translate it into HTML.'
+    variant: "idle",
+    message: "Sketch first, then send it to the backend with Generate.",
   });
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [previewCount, setPreviewCount] = useState(0);
-  const [previewSrcDoc, setPreviewSrcDoc] = useState('');
-  const [modelUsed, setModelUsed] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSketch, setLastSketch] = useState(null);
+  const [sketchCount, setSketchCount] = useState(0);
   const [backendStatus, setBackendStatus] = useState({
     ready: false,
     message: "Checking backend connection...",
@@ -91,33 +93,47 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    const verifyBackend = async () => {
+    const bootstrap = async () => {
       try {
-        const statusRes = await fetch(`${API_BASE_URL}/api/status`);
-        if (!statusRes.ok) {
-          throw new Error('Backend unavailable');
-        }
+        const [statusRes, sketchesRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/status`).catch(() => null),
+          fetch(`${API_BASE_URL}/api/sketches`).catch(() => null),
+        ]);
 
         if (cancelled) {
           return;
         }
 
-        const data = await statusRes.json();
-        setBackendStatus({
-          ready: true,
-          message: `Backend online - ${data.service ?? 'FrameForge API'}`
-        });
+        if (statusRes?.ok) {
+          const data = await statusRes.json();
+          setBackendStatus({
+            ready: true,
+            message: `Backend online - ${data.service ?? "FrameForge API"}`,
+          });
+        } else {
+          throw new Error("Backend unavailable");
+        }
+
+        if (sketchesRes?.ok) {
+          const data = await sketchesRes.json();
+          setSketchCount(
+            Array.isArray(data.sketches) ? data.sketches.length : 0
+          );
+          if (data.sketches?.length) {
+            setLastSketch(data.sketches[0]);
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           setBackendStatus({
             ready: false,
-            message: 'Backend unavailable - start the API to enable generation.'
+            message: "Backend unavailable - start the API to enable saving.",
           });
         }
       }
     };
 
-    verifyBackend();
+    bootstrap();
 
     return () => {
       cancelled = true;
@@ -125,8 +141,7 @@ export default function App() {
   }, []);
 
   const handleGenerate = useCallback(async () => {
-    const api = excalidrawAPIRef.current;
-    if (!api) {
+    if (!excalidrawAPIRef.current) {
       setFeedback({
         variant: "error",
         message: "Canvas is not ready yet. Please wait a moment.",
@@ -134,9 +149,10 @@ export default function App() {
       return;
     }
 
-    const elements = api.getSceneElements()?.filter((element) => !element.isDeleted) ?? [];
+    const elements = excalidrawAPIRef.current.getSceneElements();
+    const hasDrawableElement = elements.some((element) => !element.isDeleted);
 
-    if (!elements.length) {
+    if (!hasDrawableElement) {
       setFeedback({
         variant: "error",
         message: "Add at least one shape or stroke before generating.",
@@ -144,79 +160,57 @@ export default function App() {
       return;
     }
 
-    setIsGenerating(true);
+    setIsSaving(true);
     setFeedback({
-      variant: 'pending',
-      message: 'Generating HTML preview from your sketch...'
+      variant: "pending",
+      message: "Uploading sketch data to the backend...",
     });
 
     try {
-      const appState = api.getAppState();
-      const files = api.getFiles();
-
-      const sketchBlob = await exportToBlob({
+      const rawAppState = excalidrawAPIRef.current.getAppState();
+      const files = excalidrawAPIRef.current.getFiles();
+      const serialized = serializeAsJSON(
         elements,
-        appState: {
-          ...appState,
-          exportBackground: true,
-          exportWithDarkMode: false,
-          viewBackgroundColor: '#ffffff'
-        },
+        sanitizeAppState(rawAppState),
         files,
-        mimeType: 'image/png'
-      });
+        "database"
+      );
 
-      const imageDataUrl = await blobToDataUrl(sketchBlob);
-
-      const response = await fetch(`${API_BASE_URL}/api/generate-ui`, {
-        method: 'POST',
+      const parsed = JSON.parse(serialized);
+      const response = await fetch(`${API_BASE_URL}/api/sketches`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          image: imageDataUrl,
-          prompt: `The sketch is titled "${sketchTitle}". Produce semantic, accessible HTML that reflects the layout.`
-        })
+          title: sketchTitle,
+          scene: {
+            elements: parsed.elements ?? [],
+            appState: parsed.appState ?? {},
+            files: parsed.files ?? {},
+          },
+        }),
       });
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error ?? 'Unable to generate UI.');
+        throw new Error(errorBody.error ?? "Unable to save sketch.");
       }
 
       const payload = await response.json();
-      const sanitizedHtml = DOMPurify.sanitize(payload.html ?? '', {
-        USE_PROFILES: { html: true }
-      });
-      const sanitizedCss = DOMPurify.sanitize(payload.css ?? '', {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: []
-      });
-      const sanitizedJs = DOMPurify.sanitize(payload.js ?? '', {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: []
-      });
-
-      const scriptFragment = sanitizedJs.trim()
-        ? `<script type="module">\n${sanitizedJs}\n</script>`
-        : '';
-
-      const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><style>${sanitizedCss}</style></head><body>${sanitizedHtml}${scriptFragment}</body></html>`;
-
-      setPreviewSrcDoc(doc);
-      setModelUsed(payload.model ?? '');
-      setPreviewCount((count) => count + 1);
+      setLastSketch(payload.sketch);
+      setSketchCount((count) => count + 1);
       setFeedback({
-        variant: 'success',
-        message: 'Preview updated with the generated HTML mockup.'
+        variant: "success",
+        message: "Sketch stored! Preview integration will come later.",
       });
     } catch (error) {
       setFeedback({
-        variant: 'error',
-        message: error?.message ?? 'Something went wrong while generating the preview.'
+        variant: "error",
+        message: error.message || "Something went wrong while saving.",
       });
     } finally {
-      setIsGenerating(false);
+      setIsSaving(false);
     }
   }, [sketchTitle]);
 
@@ -224,10 +218,10 @@ export default function App() {
     <button
       type="button"
       onClick={handleGenerate}
-      disabled={isGenerating || !backendStatus.ready}
+      disabled={isSaving || !backendStatus.ready}
       className="pointer-events-auto z-[9999] flex h-12 items-center justify-center rounded-full bg-[#2563eb] px-8 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow-lg transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-[#3f4b6b]"
     >
-      {isGenerating ? 'Generating...' : 'Generate'}
+      {isSaving ? "Saving..." : "Generate"}
     </button>
   );
 
@@ -363,11 +357,19 @@ export default function App() {
                 ></textarea>
               </div>
 
-            <div className="mt-4 space-y-1 text-sm">
-              <p className={getFeedbackClasses(feedback.variant)}>{feedback.message}</p>
-              <p className="text-xs text-white/50">
-                {backendStatus.message ?? 'Waiting for backend status.'}
-              </p>
+              <div className="mt-4 space-y-1 text-sm">
+                <p className={getFeedbackClasses(feedback.variant)}>
+                  {feedback.message}
+                </p>
+                <p className="text-xs text-white/50">
+                  {backendStatus.message ?? "Waiting for backend status."}
+                </p>
+                {lastSketch?.updatedAt && (
+                  <p className="text-xs text-white/50">
+                    Last saved {formatTimestamp(lastSketch.updatedAt)}
+                  </p>
+                )}
+              </div>
             </div>
           </section>
         ) : (
@@ -391,32 +393,17 @@ export default function App() {
           </header>
 
           <div className="flex flex-1 flex-col px-6 pb-6 lg:px-8 lg:pb-8">
-            <div className="flex flex-1 overflow-hidden rounded-2xl bg-white shadow-inner">
-              {previewSrcDoc ? (
-                <iframe
-                  title="Generated UI preview"
-                  className="h-full w-full border-0"
-                  srcDoc={previewSrcDoc}
-                  sandbox="allow-scripts allow-forms allow-pointer-lock allow-popups allow-same-origin"
-                />
-              ) : (
-                <div className="flex flex-1 items-center justify-center text-center text-neutral-500">
-                  <div className="mx-auto max-w-sm space-y-2">
-                    <p className="text-base font-semibold text-neutral-700">No preview yet</p>
-                    <p className="text-sm">
-                      Sketch a layout on the canvas and press Generate to turn it into HTML.
-                    </p>
-                  </div>
-                </div>
-              )}
+            <div className="flex flex-1 items-center justify-center rounded-2xl bg-white shadow-inner">
+              <div className="flex items-center gap-3">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400 delay-150" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400 delay-300" />
+              </div>
             </div>
 
             <p className="mt-4 text-sm text-neutral-600">
-              {backendStatus.ready
-                ? previewCount
-                  ? `Generated previews: ${previewCount}${modelUsed ? ` - Model: ${modelUsed}` : ''}`
-                  : 'Ready to generate your first preview.'
-                : 'Backend offline. Start the API to enable preview generation.'}
+              Stored sketches: {sketchCount}. Preview rendering is intentionally
+              paused.
             </p>
           </div>
         </section>
