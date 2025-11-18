@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
+import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import MicNoneOutlinedIcon from "@mui/icons-material/MicNoneOutlined";
 import PauseOutlinedIcon from "@mui/icons-material/PauseOutlined";
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
-import DOMPurify from 'dompurify';
-import '@excalidraw/excalidraw/index.css';
+import DOMPurify from "dompurify";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -278,11 +275,6 @@ export default function App() {
                 <p className="text-xs text-white/50">
                   {backendStatus.message ?? "Waiting for backend status."}
                 </p>
-                {lastSketch?.updatedAt && (
-                  <p className="text-xs text-white/50">
-                    Last saved {formatTimestamp(lastSketch.updatedAt)}
-                  </p>
-                )}
               </div>
             </div>
           </section>
@@ -324,11 +316,6 @@ export default function App() {
                 <p className="text-xs text-white/50">
                   {backendStatus.message ?? "Waiting for backend status."}
                 </p>
-                {lastSketch?.updatedAt && (
-                  <p className="text-xs text-white/50">
-                    Last saved {formatTimestamp(lastSketch.updatedAt)}
-                  </p>
-                )}
               </div>
             </div>
           </section>
@@ -363,11 +350,14 @@ export default function App() {
                 ></textarea>
               </div>
 
-            <div className="mt-4 space-y-1 text-sm">
-              <p className={getFeedbackClasses(feedback.variant)}>{feedback.message}</p>
-              <p className="text-xs text-white/50">
-                {backendStatus.message ?? 'Waiting for backend status.'}
-              </p>
+              <div className="mt-4 space-y-1 text-sm">
+                <p className={getFeedbackClasses(feedback.variant)}>
+                  {feedback.message}
+                </p>
+                <p className="text-xs text-white/50">
+                  {backendStatus.message ?? "Waiting for backend status."}
+                </p>
+              </div>
             </div>
           </section>
         ) : (
