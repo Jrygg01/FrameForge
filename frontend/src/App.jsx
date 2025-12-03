@@ -51,7 +51,10 @@ const blobToDataUrl = (blob) =>
 
 export default function App() {
   const excalidrawAPIRef = useRef(null);
+  const savedSketchDataRef = useRef(null);
   const [sketchTitle] = useState("Homepage concept");
+  const [typedPrompt, setTypedPrompt] = useState("");
+  const [voicePrompt, setVoicePrompt] = useState("");
   const [feedback, setFeedback] = useState({
     variant: "idle",
     message:
@@ -66,6 +69,10 @@ export default function App() {
     message: "Checking backend connection...",
   });
   const [inputMode, setInputMode] = useState("sketch");
+  const initialSketchData = useMemo(
+    () => savedSketchDataRef.current ?? undefined,
+    [inputMode]
+  );
 
   const changeInputMode = (newInputMode) => {
     setInputMode(newInputMode);
@@ -168,6 +175,10 @@ export default function App() {
       });
 
       const imageDataUrl = await blobToDataUrl(sketchBlob);
+      const userComments = typedPrompt.trim();
+      const prompt = `The sketch is titled "${sketchTitle}". Produce semantic, accessible HTML that reflects the layout.${
+        userComments ? ` User comments: ${userComments}` : ""
+      }`;
 
       const response = await fetch(`${API_BASE_URL}/api/generate-ui`, {
         method: "POST",
@@ -176,7 +187,7 @@ export default function App() {
         },
         body: JSON.stringify({
           image: imageDataUrl,
-          prompt: `The sketch is titled "${sketchTitle}". Produce semantic, accessible HTML that reflects the layout.`,
+          prompt,
         }),
       });
 
@@ -221,7 +232,7 @@ export default function App() {
     } finally {
       setIsGenerating(false);
     }
-  }, [sketchTitle]);
+  }, [sketchTitle, typedPrompt]);
 
   const generateButton = (
     <button
@@ -265,6 +276,10 @@ export default function App() {
                 <Excalidraw
                   excalidrawAPI={(api) => {
                     excalidrawAPIRef.current = api;
+                  }}
+                  initialData={initialSketchData}
+                  onChange={(elements, appState, files) => {
+                    savedSketchDataRef.current = { elements, appState, files };
                   }}
                   theme="dark"
                   UIOptions={uiOptions}
@@ -312,6 +327,8 @@ export default function App() {
                   className="bg-none w-full h-full p-4 bg-stone-950"
                   type="text"
                   placeholder="Type prompt here..."
+                  value={typedPrompt}
+                  onChange={(event) => setTypedPrompt(event.target.value)}
                 ></textarea>
               </div>
 
@@ -353,6 +370,8 @@ export default function App() {
                   className="bg-none w-full h-full p-4 bg-stone-950"
                   type="text"
                   placeholder="Waiting for voice prompt..."
+                  value={voicePrompt}
+                  onChange={(event) => setVoicePrompt(event.target.value)}
                 ></textarea>
               </div>
 
