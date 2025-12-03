@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
+import DOMPurify from "dompurify";
 import "@excalidraw/excalidraw/index.css";
 import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import MicNoneOutlinedIcon from "@mui/icons-material/MicNoneOutlined";
 import PauseOutlinedIcon from "@mui/icons-material/PauseOutlined";
-import DOMPurify from "dompurify";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 const IconButton = ({ label, children, ...props }) => (
   <button
@@ -38,13 +38,14 @@ const blobToDataUrl = (blob) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
+      if (typeof reader.result === "string") {
         resolve(reader.result);
       } else {
-        reject(new Error('Unable to read sketch image data.'));
+        reject(new Error("Unable to read sketch image data."));
       }
     };
-    reader.onerror = () => reject(new Error('Unable to read sketch image data.'));
+    reader.onerror = () =>
+      reject(new Error("Unable to read sketch image data."));
     reader.readAsDataURL(blob);
   });
 
@@ -52,13 +53,14 @@ export default function App() {
   const excalidrawAPIRef = useRef(null);
   const [sketchTitle] = useState("Homepage concept");
   const [feedback, setFeedback] = useState({
-    variant: 'idle',
-    message: 'Sketch your interface, then click Generate to translate it into HTML.'
+    variant: "idle",
+    message:
+      "Sketch your interface, then click Generate to translate it into HTML.",
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewCount, setPreviewCount] = useState(0);
-  const [previewSrcDoc, setPreviewSrcDoc] = useState('');
-  const [modelUsed, setModelUsed] = useState('');
+  const [previewSrcDoc, setPreviewSrcDoc] = useState("");
+  const [modelUsed, setModelUsed] = useState("");
   const [backendStatus, setBackendStatus] = useState({
     ready: false,
     message: "Checking backend connection...",
@@ -92,7 +94,7 @@ export default function App() {
       try {
         const statusRes = await fetch(`${API_BASE_URL}/api/status`);
         if (!statusRes.ok) {
-          throw new Error('Backend unavailable');
+          throw new Error("Backend unavailable");
         }
 
         if (cancelled) {
@@ -102,13 +104,14 @@ export default function App() {
         const data = await statusRes.json();
         setBackendStatus({
           ready: true,
-          message: `Backend online - ${data.service ?? 'FrameForge API'}`
+          message: `Backend online - ${data.service ?? "FrameForge API"}`,
         });
       } catch (error) {
         if (!cancelled) {
           setBackendStatus({
             ready: false,
-            message: 'Backend unavailable - start the API to enable generation.'
+            message:
+              "Backend unavailable - start the API to enable generation.",
           });
         }
       }
@@ -131,7 +134,8 @@ export default function App() {
       return;
     }
 
-    const elements = api.getSceneElements()?.filter((element) => !element.isDeleted) ?? [];
+    const elements =
+      api.getSceneElements()?.filter((element) => !element.isDeleted) ?? [];
 
     if (!elements.length) {
       setFeedback({
@@ -143,8 +147,8 @@ export default function App() {
 
     setIsGenerating(true);
     setFeedback({
-      variant: 'pending',
-      message: 'Generating HTML preview from your sketch...'
+      variant: "pending",
+      message: "Generating HTML preview from your sketch...",
     });
 
     try {
@@ -157,60 +161,62 @@ export default function App() {
           ...appState,
           exportBackground: true,
           exportWithDarkMode: false,
-          viewBackgroundColor: '#ffffff'
+          viewBackgroundColor: "#ffffff",
         },
         files,
-        mimeType: 'image/png'
+        mimeType: "image/png",
       });
 
       const imageDataUrl = await blobToDataUrl(sketchBlob);
 
       const response = await fetch(`${API_BASE_URL}/api/generate-ui`, {
-        method: 'POST',
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           image: imageDataUrl,
-          prompt: `The sketch is titled "${sketchTitle}". Produce semantic, accessible HTML that reflects the layout.`
-        })
+          prompt: `The sketch is titled "${sketchTitle}". Produce semantic, accessible HTML that reflects the layout.`,
+        }),
       });
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error ?? 'Unable to generate UI.');
+        throw new Error(errorBody.error ?? "Unable to generate UI.");
       }
 
       const payload = await response.json();
-      const sanitizedHtml = DOMPurify.sanitize(payload.html ?? '', {
-        USE_PROFILES: { html: true }
+      const sanitizedHtml = DOMPurify.sanitize(payload.html ?? "", {
+        USE_PROFILES: { html: true },
       });
-      const sanitizedCss = DOMPurify.sanitize(payload.css ?? '', {
+      const sanitizedCss = DOMPurify.sanitize(payload.css ?? "", {
         ALLOWED_TAGS: [],
-        ALLOWED_ATTR: []
+        ALLOWED_ATTR: [],
       });
-      const sanitizedJs = DOMPurify.sanitize(payload.js ?? '', {
+      const sanitizedJs = DOMPurify.sanitize(payload.js ?? "", {
         ALLOWED_TAGS: [],
-        ALLOWED_ATTR: []
+        ALLOWED_ATTR: [],
       });
 
       const scriptFragment = sanitizedJs.trim()
         ? `<script type="module">\n${sanitizedJs}\n</script>`
-        : '';
+        : "";
 
       const doc = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><style>${sanitizedCss}</style></head><body>${sanitizedHtml}${scriptFragment}</body></html>`;
 
       setPreviewSrcDoc(doc);
-      setModelUsed(payload.model ?? '');
+      setModelUsed(payload.model ?? "");
       setPreviewCount((count) => count + 1);
       setFeedback({
-        variant: 'success',
-        message: 'Preview updated with the generated HTML mockup.'
+        variant: "success",
+        message: "Preview updated with the generated HTML mockup.",
       });
     } catch (error) {
       setFeedback({
-        variant: 'error',
-        message: error?.message ?? 'Something went wrong while generating the preview.'
+        variant: "error",
+        message:
+          error?.message ??
+          "Something went wrong while generating the preview.",
       });
     } finally {
       setIsGenerating(false);
@@ -224,7 +230,7 @@ export default function App() {
       disabled={isGenerating || !backendStatus.ready}
       className="pointer-events-auto z-[9999] flex h-12 items-center justify-center rounded-full bg-[#2563eb] px-8 text-xs font-semibold uppercase tracking-[0.3em] text-white shadow-lg transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-[#3f4b6b]"
     >
-      {isGenerating ? 'Generating...' : 'Generate'}
+      {isGenerating ? "Generating..." : "Generate"}
     </button>
   );
 
@@ -392,9 +398,12 @@ export default function App() {
               ) : (
                 <div className="flex flex-1 items-center justify-center text-center text-neutral-500">
                   <div className="mx-auto max-w-sm space-y-2">
-                    <p className="text-base font-semibold text-neutral-700">No preview yet</p>
+                    <p className="text-base font-semibold text-neutral-700">
+                      No preview yet
+                    </p>
                     <p className="text-sm">
-                      Sketch a layout on the canvas and press Generate to turn it into HTML.
+                      Sketch a layout on the canvas and press Generate to turn
+                      it into HTML.
                     </p>
                   </div>
                 </div>
@@ -404,9 +413,11 @@ export default function App() {
             <p className="mt-4 text-sm text-neutral-600">
               {backendStatus.ready
                 ? previewCount
-                  ? `Generated previews: ${previewCount}${modelUsed ? ` - Model: ${modelUsed}` : ''}`
-                  : 'Ready to generate your first preview.'
-                : 'Backend offline. Start the API to enable preview generation.'}
+                  ? `Generated previews: ${previewCount}${
+                      modelUsed ? ` - Model: ${modelUsed}` : ""
+                    }`
+                  : "Ready to generate your first preview."
+                : "Backend offline. Start the API to enable preview generation."}
             </p>
           </div>
         </section>
