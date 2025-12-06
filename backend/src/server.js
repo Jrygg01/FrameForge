@@ -146,7 +146,6 @@ app.post("/api/generate-ui", async (req, res) => {
       "- Preserve relative positioning, sizing, and grouping from the sketch.",
       "",
       "Responsiveness",
-      "- Implement a mobile-first layout.",
       "- Use CSS Grid for macro layout and Flexbox for internal alignment.",
       "- Provide at least two breakpoints (e.g., 640px and 1024px) that maintain the layout rhythm.",
       "",
