@@ -1,72 +1,95 @@
 # FrameForge
 
-FrameForge is an experimental design assistant that turns voice prompts and sketch inputs into interactive web mockups. This repository is structured as a full-stack playground with a React + Tailwind front-end and a Node.js + Express API backend.
+FrameForge is a full-stack playground for turning quick sketches and prompts into live HTML previews. The frontend provides a dark-mode canvas with Excalidraw plus voice and typed prompts, and the backend wraps OpenAI's responses API to transform uploaded sketches into semantic, accessible web mockups.
 
-## Code Origin
-
-This code was generated using "npm create vite@latest". We then moved some files around and added more structure. Finally, we used a bit of AI to help set up the basics of the server file and API calling files.
+## Features
+- Excalidraw sketch canvas with saved scene state and a centered "Generate" call-to-action.
+- Three input modes: sketch, typed prompt, and voice capture (record, pause, resume, edit transcript, and playback).
+- Live preview iframe that sanitizes returned HTML, CSS, and JS before rendering.
+- Backend status banner so you know when the API is ready.
+- Local sketch persistence to `backend/sketches` for quick reloads and basic versioning.
 
 ## Tech Stack
-
-- React 18 with Vite and Tailwind CSS for the live mockup workspace
-- Node.js 18+ with Express for API orchestration and future AI integrations
-- OpenAI Whisper + Chat Completions (planned) for voice transcription and design reasoning
-- Excalidraw plugin for handling sketch drawing input
+- Frontend: React 18 + Vite, Tailwind utility classes, MUI icon set, Excalidraw.
+- Backend: Node.js 18+, Express, OpenAI SDK (Responses API).
+- Tooling: npm scripts, Nodemon for backend dev reloads, DOMPurify for client-side sanitization.
 
 ## Project Structure
-
 ```
 FrameForge/
-├── frontend/      # React + Tailwind application
-│   ├── src/       # Entry point and UI shells
-│   └── index.html # Vite document shell
-├── backend/       # Express server
-│   ├── src/       # API entry point
-│   └── .env.example
-└── README.md
+|-- frontend/             # React app (Vite)
+|   |-- src/App.jsx       # Canvas + prompt/preview experience
+|   |-- src/main.jsx
+|   `-- src/styles.css
+|-- backend/              # Express API + OpenAI bridge
+|   |-- src/server.js     # REST endpoints and OpenAI call
+|   |-- src/sketchStore.js # Local JSON persistence for sketches
+|   |-- sketches/         # Saved sketches (gitignored)
+|   `-- .env.example
+`-- README.md
 ```
 
-## Getting Started
-
-### 1. Prerequisites
-
+## Prerequisites
 - Node.js 18 or newer
 - npm 9+
+- OpenAI API key with access to the Responses API (for `/api/generate-ui`)
 
-### 2. Install Dependencies
-
-NOTE: Must be performed after pulling in code updates in case of updated dependencies.
-
+## Setup & Run
+1) Install dependencies  
 ```bash
-# Frontend (React + Tailwind)
+# Frontend
 cd frontend
 npm install
 
-# Backend (Express API)
+# Backend
 cd ../backend
 npm install
 ```
 
-### 3. Run the Apps
+2) Configure environment  
+- Copy `backend/.env.example` to `backend/.env` and set:
+  - `PORT` (default: 4000)
+  - `CLIENT_ORIGIN` (default: http://localhost:5173)
+  - `OPENAI_API_KEY` (required for UI generation)
+- Optional frontend override: set `VITE_API_URL` if the API is not on the default `http://localhost:4000`.
 
+3) Start in development  
 ```bash
-# Frontend: starts Vite dev server on http://localhost:5173
-cd frontend
-npm run dev
-
-# Backend: starts Express API on http://localhost:4000
+# Terminal 1 (backend)
 cd backend
-npm run dev
+npm run dev   # nodemon on http://localhost:4000
+
+# Terminal 2 (frontend)
+cd frontend
+npm run dev   # Vite on http://localhost:5173
 ```
 
-### 4. Configure Environment Variables
+4) Build/serve for production  
+```bash
+cd frontend
+npm run build      # output to frontend/dist
 
-Copy `backend/.env.example` to `backend/.env` and update it with your local values (e.g., OpenAI API key, frontend origin).
+cd ../backend
+npm start          # runs src/server.js (ensure env vars are set)
+```
 
-## Next Steps
+## Usage Workflow
+- Pick an input mode (sketch, type, speak).
+- Draw in Excalidraw or add prompt context (typed or recorded).
+- Click **Generate** to send the sketch (exported PNG data URL) and prompt to the backend.
+- Review the sanitized HTML, CSS, and JS in the right-hand preview; regenerate as you iterate.
 
-- Implement real voice transcription through Whisper
-- Translate canvas sketches into structured layout data
-- Connect the front-end mockup renderer to the API responses
+## API Reference (backend/src/server.js)
+- `GET /api/status` - health check.
+- `POST /api/generate-ui` - body: `{ image: "<data-url>", prompt?: "<text>" }`; returns `{ html, css, js, model }`.
+- `POST /api/mockups` - placeholder that echoes prompt/sketch data.
+- `GET /api/sketches` - list saved sketches (metadata only).
+- `GET /api/sketches/:id` - retrieve a saved sketch (full scene).
+- `POST /api/sketches` - body: `{ title, scene }` where `scene` matches Excalidraw's elements/appState/files shape.
 
-FrameForge is currently a skeleton meant to help the team align on architecture. Build upon this foundation by layering the interactive canvas, voice command handling, and AI-driven mockup generation.\*\*\* End Patch
+Sketch files are stored as JSON under `backend/sketches/` (created on demand, ignored by git).
+
+## Notes & Tips
+- Voice capture relies on the browser's Web Speech API and MediaRecorder; use a Chromium-based browser for best results.
+- The OpenAI call uses `OPENAI_RESPONSES_MODEL` and `OPENAI_RESPONSES_MAX_TOKENS` if set; defaults are defined in `src/server.js`.
+- If previews stay empty, confirm the backend health banner is green and your OpenAI key is present.
