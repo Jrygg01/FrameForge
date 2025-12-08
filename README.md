@@ -1,6 +1,11 @@
 ﻿# FrameForge
-
 FrameForge is a full-stack playground for turning quick sketches and prompts into live HTML previews. The frontend provides a dark-mode canvas with Excalidraw plus voice and typed prompts, and the backend wraps OpenAI's responses API to transform uploaded sketches into semantic, accessible web mockups.
+
+## Per-Milestone Implementation Work Report
+- M1: Basic React project initialization with Vite, Node setup and plugin installation
+- M2: Sketching functionality with Excalidraw
+- M3: Site generation based on sketches with OpenAI API integration
+- M4: Working keyboard and microphone input options interfacing with API
 
 ## Features
 - Excalidraw sketch canvas with saved scene state and a centered "Generate" call-to-action.
